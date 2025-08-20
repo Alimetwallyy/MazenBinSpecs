@@ -95,6 +95,13 @@ def sync_bin_keys_with_library():
     for grp in st.session_state.groups:
         grp['bin_keys'] = [k for k in grp.get('bin_keys', []) if k in valid_ids]
 
+# Safe rerun function (compatibility for Streamlit>=1.30)
+def rerun():
+    try:
+        st.rerun()
+    except AttributeError:
+        from streamlit import experimental_rerun
+        experimental_rerun()
 
 # ================= Excel export =================
 
@@ -191,7 +198,7 @@ with col_add:
             'Qty bins per Shelf': 1,
             'UT': 0.0,
         }
-        st.experimental_rerun()
+        rerun()
 with col_warn:
     if not st.session_state.bin_library:
         st.info("Add bin types here first, then assign them to groups below.")
@@ -218,13 +225,12 @@ for bin_id, data in list(st.session_state.bin_library.items()):
         del_col1, del_col2 = st.columns([1, 6])
         with del_col1:
             if st.button(f"🗑️ Delete", key=f"del_{bin_id}"):
-                # Remove from library and from all groups selections
                 del st.session_state.bin_library[bin_id]
                 sync_bin_keys_with_library()
                 st.success(f"Deleted bin type '{label}'.")
-                st.experimental_rerun()
+                rerun()
 
-# Ensure group selections are in sync with library (prevents default-not-in-options errors)
+# Ensure group selections are in sync with library
 sync_bin_keys_with_library()
 
 # ================= Groups UI =================
@@ -245,7 +251,7 @@ if st.button("➕ Add New Group"):
         'bin_keys': [],
         'finalized': False,
     })
-    st.experimental_rerun()
+    rerun()
 
 for group_idx, group in enumerate(st.session_state.groups):
     is_new_copy = group_idx == len(st.session_state.groups) - 1 and st.session_state.get('last_action') == f"copy_{group_idx-1}"
@@ -271,7 +277,6 @@ for group_idx, group in enumerate(st.session_state.groups):
             # Bin selection from library
             available_ids = list(st.session_state.bin_library.keys())
             labels = {k: st.session_state.bin_library[k].get('Bin Box Type') or k for k in available_ids}
-            # Intersect defaults with options to avoid Streamlit errors
             default_vals = [k for k in group.get('bin_keys', []) if k in available_ids]
             group['bin_keys'] = st.multiselect(
                 "Select Bin Box Types for this Group",
@@ -281,7 +286,6 @@ for group_idx, group in enumerate(st.session_state.groups):
                 key=f"binsel_{group_idx}",
             )
 
-            # Live preview of calculations for selected bins
             if group['bin_keys']:
                 st.caption("Calculated preview for selected bins:")
                 for k in group['bin_keys']:
@@ -291,59 +295,4 @@ for group_idx, group in enumerate(st.session_state.groups):
             with cols_btn[0]:
                 if st.button(f"Finalize Group {group_idx + 1}", key=f"gfin_{group_idx}"):
                     group['finalized'] = True
-                    st.success(f"Group {group_idx + 1} finalized!")
-                    st.experimental_rerun()
-            with cols_btn[1]:
-                if st.button(f"Delete Group {group_idx + 1}", key=f"gdel_{group_idx}"):
-                    st.session_state.groups.pop(group_idx)
-                    st.experimental_rerun()
-        else:
-            if st.button(f"Edit Group {group_idx + 1}", key=f"gedit_{group_idx}"):
-                group['finalized'] = False
-                st.experimental_rerun()
-
-# Summary and copy controls
-if st.session_state.groups:
-    st.subheader("All Groups (Summary)")
-    for i, group in enumerate(st.session_state.groups):
-        with st.expander(f"Group {i + 1}: {group['group_data']['Group Name'] or 'Untitled'} ({'Finalized' if group['finalized'] else 'Editing'})"):
-            st.write("**Group Details**")
-            st.json(group['group_data'])
-            st.write("**Selected Bin Types**")
-            if group.get('bin_keys'):
-                for k in group['bin_keys']:
-                    label = st.session_state.bin_library.get(k, {}).get('Bin Box Type', k)
-                    st.write(f"• {label}")
-            else:
-                st.write("(none)")
-            if st.button(f"Copy Group {i + 1}", key=f"gcopy_{i}"):
-                new_group = copy.deepcopy(group)
-                new_group['finalized'] = False
-                new_group['group_data']['Group Name'] = (
-                    f"{new_group['group_data']['Group Name']} (Copy)"
-                    if new_group['group_data']['Group Name'] else "Untitled (Copy)"
-                )
-                st.session_state.groups.append(new_group)
-                st.session_state['last_action'] = f"copy_{i}"
-                st.success(f"Group {i + 1} copied!")
-                st.experimental_rerun()
-
-# Download
-if st.session_state.groups:
-    if not st.session_state.bin_library:
-        st.warning("Add at least one bin type in the library before exporting.")
-    else:
-        excel_data = generate_excel(st.session_state.groups)
-        st.download_button(
-            label="⬇️ Download Excel File",
-            data=excel_data,
-            file_name="Bin_Divider_Specs.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-
-# Clear all data
-if st.button("Clear All Data"):
-    st.session_state.groups = []
-    st.session_state.bin_library = {}
-    st.session_state.next_bin_id = 1
-    st.experimental_rerun()
+                   
